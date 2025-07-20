@@ -5,6 +5,7 @@ pipeline {
         PATH = "/usr/bin/dotnet:${env.PATH}"
         JD_IMAGE = "souravdutta06/helloworldwebapp:latest"
         DOCKER_BUILDKIT = "1"  // Keep enabled if installing buildx
+        APP_IP = "20.120.177.214"
     }
     stages {
         stage('Checkout') {

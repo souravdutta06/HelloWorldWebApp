@@ -50,12 +50,37 @@ pipeline {
         }
         
         stage('Deploy to AppServer') {
-            steps {
-                sshagent(credentials: ['appserver-ssh']) {
-                    sh "ssh -o StrictHostKeyChecking=no sysadmin@20.120.177.214 'docker pull ${env.JD_IMAGE}'"
-                    sh "ssh sysadmin@20.120.177.214 'docker run -d -p 80:80 --name helloworldapp ${env.JD_IMAGE}'"
-                }
-            }
+    steps {
+        sshagent(credentials: ['appserver-ssh']) {
+            sh """
+                ssh -o ConnectTimeout=30 -o StrictHostKeyChecking=no sysadmin@${env.APP_IP} '
+                    # Pull latest image
+                    docker pull ${env.JD_IMAGE} || { echo "ERROR: Image pull failed"; exit 1; }
+                    
+                    # Remove existing container if exists
+                    if docker container inspect helloworldapp >/dev/null 2>&1; then
+                        docker stop helloworldapp
+                        docker rm helloworldapp
+                    fi
+                    
+                    # Start new container with cleanup hook
+                    docker run -d \\
+                        --name helloworldapp \\
+                        --restart=unless-stopped \\
+                        --health-cmd "curl -f http://localhost/healthz || exit 1" \\
+                        --health-interval=30s \\
+                        --health-start-period=10s \\
+                        --health-retries=3 \\
+                        -p 80:80 \\
+                        ${env.JD_IMAGE}
+                    
+                    # Verify deployment
+                    echo "Deployment complete. Container status:"
+                    docker ps --filter "name=helloworldapp" --format "table {{.ID}}\\t{{.Names}}\\t{{.Status}}"
+                '
+            """
         }
+    }
+}
     }
 }

@@ -3,7 +3,8 @@ pipeline {
     environment {
         DOCKERHUB_CREDENTIALS = credentials('dockerhub-creds')
         PATH = "/usr/bin/dotnet:${env.PATH}"
-        JD_IMAGE = "souravdutta06/helloworldwebapp:latest"  // Define image name as variable
+        JD_IMAGE = "souravdutta06/helloworldwebapp:latest"
+        DOCKER_BUILDKIT = "1"  // Enable BuildKit to resolve deprecation warning
     }
     stages {
         stage('Checkout') {
@@ -23,10 +24,8 @@ pipeline {
         }
         stage('Docker Build') {
             steps {
-                // Build from root directory with explicit Dockerfile path
-                dir("${env.WORKSPACE}") {
-                    sh "docker build -t ${env.JD_IMAGE} -f HelloWorldWebApp/Dockerfile ."
-                }
+                // Build from current directory (where Dockerfile is located)
+                sh "docker build -t ${env.JD_IMAGE} ."
             }
         }
         stage('Docker Push') {
@@ -38,9 +37,8 @@ pipeline {
         stage('Deploy to AppServer') {
             steps {
                 sshagent(credentials: ['appserver-ssh']) {
-                    // Use environment variable for IP consistency
                     sh "ssh -o StrictHostKeyChecking=no sysadmin@20.120.177.214 'docker pull ${env.JD_IMAGE}'"
-                    sh "ssh sysadmin@20.120.177.214 'docker run -d -p 80:80 ${env.JD_IMAGE}'"
+                    sh "ssh sysadmin@20.120.177.214 'docker run -d -p 80:80 --name helloworldapp ${env.JD_IMAGE}'"
                 }
             }
         }

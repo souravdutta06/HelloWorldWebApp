@@ -6,7 +6,7 @@ WORKDIR /src
 COPY ../HelloWorldWebApp.sln .
 COPY HelloWorldWebApp.Web/ HelloWorldWebApp.Web/
 COPY HelloWorldWebApp.Tests/ HelloWorldWebApp.Tests/
-WORKDIR /src/HelloWorldWebApp.Web
+WORKDIR HelloWorldWebApp.Web
 RUN dotnet restore
 
 # Build and publish

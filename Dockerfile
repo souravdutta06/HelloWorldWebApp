@@ -2,30 +2,45 @@
 
 # Base builder stage with cached dependencies
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS base
+
+# Create non-root user with home directory
+RUN groupadd -r appgroup && \
+    useradd -r -g appgroup -m -d /appuser appuser && \
+    chown -R appuser:appgroup /appuser
+
+# Set working directory with proper ownership
 WORKDIR /src
+RUN chown appuser:appgroup /src
+
+# Set environment variables for dotnet
+ENV DOTNET_CLI_HOME=/appuser/.dotnet \
+    DOTNET_SKIP_FIRST_TIME_EXPERIENCE=1 \
+    DOTNET_NOLOGO=1
+
+# Switch to non-root user
+USER appuser
 
 # Cache NuGet packages by copying csproj files first
-COPY HelloWorldWebApp.sln .
-COPY HelloWorldWebApp.Web/*.csproj ./HelloWorldWebApp.Web/
-COPY HelloWorldWebApp.Tests/*.csproj ./HelloWorldWebApp.Tests/
+COPY --chown=appuser:appgroup HelloWorldWebApp.sln .
+COPY --chown=appuser:appgroup HelloWorldWebApp.Web/*.csproj ./HelloWorldWebApp.Web/
+COPY --chown=appuser:appgroup HelloWorldWebApp.Tests/*.csproj ./HelloWorldWebApp.Tests/
 
-# Restore packages (creates layer with dependencies)
+# Restore packages with user-level cache
 RUN dotnet restore HelloWorldWebApp.sln
 
 # Build stage
 FROM base AS build
+USER appuser
 WORKDIR /src
 
 # Copy all source code
-COPY . .
+COPY --chown=appuser:appgroup . .
 
 # Build with optimizations
 RUN dotnet build HelloWorldWebApp.sln \
     -c Release \
     --no-restore \
     -p:ContinuousIntegrationBuild=true \
-    -p:DebugType=none \
-    -p:DebugSymbols=false \
     -o /app/build
 
 # Publish stage
@@ -34,11 +49,6 @@ RUN dotnet publish HelloWorldWebApp.Web/HelloWorldWebApp.Web.csproj \
     -c Release \
     --no-build \
     --no-restore \
-    --no-self-contained \
-    -p:EnableCompressionInSingleFile=true \
-    -p:PublishTrimmed=true \
-    -p:TrimMode=partial \
-    -p:InvariantGlobalization=true \
     -o /app/publish
 
 # Final runtime image
@@ -47,8 +57,7 @@ FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS final
 # Security hardening
 RUN groupadd -r appgroup && \
     useradd -r -g appgroup appuser && \
-    chsh -s /bin/false appuser && \
-    rm -rf /tmp/*
+    chsh -s /bin/false appuser
 
 WORKDIR /app
 COPY --from=publish --chown=appuser:appgroup /app/publish .
@@ -61,8 +70,7 @@ HEALTHCHECK --interval=30s --timeout=3s \
     CMD curl -f http://localhost/healthz || exit 1
 
 ENV ASPNETCORE_URLS=http://+:80 \
-    DOTNET_RUNNING_IN_CONTAINER=true \
-    DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1
+    DOTNET_RUNNING_IN_CONTAINER=true
 
 EXPOSE 80
 

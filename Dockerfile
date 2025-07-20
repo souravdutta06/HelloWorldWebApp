@@ -26,5 +26,9 @@ COPY --from=build /app/publish .
 EXPOSE 80
 EXPOSE 443
 
+
+
 # Run the application
+ENV ASPNETCORE_URLS=http://+:8080
+EXPOSE 8080
 ENTRYPOINT ["dotnet", "HelloWorldWebApp.Web.dll"]

@@ -3,13 +3,16 @@ FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
 WORKDIR /src
 
 # Copy solution and restore
-COPY ../HelloWorldWebApp.sln .
+COPY HelloWorldWebApp.sln .
 COPY HelloWorldWebApp.Web/ HelloWorldWebApp.Web/
 COPY HelloWorldWebApp.Tests/ HelloWorldWebApp.Tests/
-WORKDIR HelloWorldWebApp.Web
-RUN dotnet restore
 
-# Build and publish
+# Restore and build the web project
+WORKDIR /src/HelloWorldWebApp.Web
+RUN dotnet restore
+RUN dotnet build -c Release --no-restore
+
+# Publish
 RUN dotnet publish -c Release -o /app/publish
 
 # Runtime stage

@@ -55,29 +55,43 @@ pipeline {
         sshagent(credentials: ['appserver-ssh']) {
             sh """
                 ssh -o ConnectTimeout=30 -o StrictHostKeyChecking=no sysadmin@${env.APP_IP} '
-                    # Pull latest image
-                    docker pull ${env.JD_IMAGE} || { echo "ERROR: Image pull failed"; exit 1; }
+                    # Clean up
+                    docker stop helloworldapp || true
+                    docker rm helloworldapp || true
                     
-                    # Remove existing container if exists
-                    if docker container inspect helloworldapp >/dev/null 2>&1; then
-                        docker stop helloworldapp
-                        docker rm helloworldapp
-                    fi
+                    # Get new image
+                    docker pull ${env.JD_IMAGE}
                     
-                    # Start new container with cleanup hook
+                    # Start container
                     docker run -d \\
                         --name helloworldapp \\
-                        --restart=unless-stopped \\
-                        --health-cmd "curl -f http://localhost/healthz || exit 1" \\
-                        --health-interval=30s \\
-                        --health-start-period=10s \\
-                        --health-retries=3 \\
                         -p 80:80 \\
                         ${env.JD_IMAGE}
                     
-                    # Verify deployment
-                    echo "Deployment complete. Container status:"
-                    docker ps --filter "name=helloworldapp" --format "table {{.ID}}\\t{{.Names}}\\t{{.Status}}"
+                    # Wait for startup
+                    sleep 10
+                    
+                    # Run diagnostics
+                    echo "\\n=== Container Status ==="
+                    docker ps -a
+                    
+                    echo "\\n=== Application Logs ==="
+                    docker logs helloworldapp
+                    
+                    echo "\\n=== Port Mapping ==="
+                    docker port helloworldapp
+                    
+                    echo "\\n=== Network Inspection ==="
+                    docker exec helloworldapp netstat -tuln
+                    
+                    echo "\\n=== Internal Access Test ==="
+                    docker exec helloworldapp curl -I http://localhost
+                    
+                    echo "\\n=== External Access Test ==="
+                    curl -I http://localhost || true
+                    
+                    echo "\\n=== Firewall Check ==="
+                    sudo ufw status
                 '
             """
         }

@@ -1,61 +1,98 @@
 pipeline {
-    agent any
+    agent {
+        docker {
+            image 'mcr.microsoft.com/dotnet/sdk:8.0'
+            args '--platform linux/amd64 -v /var/run/docker.sock:/var/run/docker.sock'
+        }
+    }
     environment {
+        DOCKER_BUILDKIT = "1"
         DOCKERHUB_CREDENTIALS = credentials('dockerhub-creds')
-        PATH = "/usr/bin/dotnet:${env.PATH}"
-        JD_IMAGE = "souravdutta06/helloworldwebapp:latest"
-        DOCKER_BUILDKIT = "1"  // Keep enabled if installing buildx
+        JD_IMAGE = "souravdutta06/helloworldwebapp:${env.BUILD_ID}"
+        APP_IP = "20.120.177.214"
     }
     stages {
         stage('Checkout') {
             steps {
-                checkout scm
+                checkout([
+                    $class: 'GitSCM',
+                    branches: scm.branches,
+                    extensions: scm.extensions + [[
+                        $class: 'CloneOption',
+                        shallow: true,
+                        depth: 1,
+                        timeout: 10
+                    ]],
+                    userRemoteConfigs: scm.userRemoteConfigs
+                ])
             }
         }
         
-        stage('Install Buildx') {
+        stage('Restore & Build') {
             steps {
-                sh '''
-                    mkdir -p ~/.docker/cli-plugins
-                    curl -L https://github.com/docker/buildx/releases/download/v0.11.2/buildx-v0.11.2.linux-amd64 \
-                         -o ~/.docker/cli-plugins/docker-buildx
-                    chmod a+x ~/.docker/cli-plugins/docker-buildx
-                '''
+                sh 'dotnet restore'
+                sh 'dotnet build --configuration Release --no-restore'
             }
         }
         
-        stage('Build') {
+        stage('Unit Tests') {
             steps {
-                sh 'dotnet build'                
-            }
-        }
-        
-        stage('Unit Test') {
-            steps {
-                sh 'dotnet test HelloWorldWebApp.Tests/HelloWorldWebApp.Tests.csproj'
+                sh 'dotnet test HelloWorldWebApp.Tests/HelloWorldWebApp.Tests.csproj --configuration Release --no-build --verbosity normal'
             }
         }
         
         stage('Docker Build') {
             steps {
-                sh "docker build -t ${env.JD_IMAGE} ."
+                script {
+                    docker.withRegistry('https://index.docker.io/v1/', 'dockerhub-creds') {
+                        dockerImage = docker.build("${env.JD_IMAGE}", 
+                            "--build-arg BUILDKIT_INLINE_CACHE=1 " +
+                            "--cache-from souravdutta06/helloworldwebapp:latest ."
+                        )
+                    }
+                }
             }
         }
         
         stage('Docker Push') {
             steps {
-                sh "echo \$DOCKERHUB_CREDENTIALS_PSW | docker login -u \$DOCKERHUB_CREDENTIALS_USR --password-stdin"
-                sh "docker push ${env.JD_IMAGE}"
+                script {
+                    docker.withRegistry('https://index.docker.io/v1/', 'dockerhub-creds') {
+                        dockerImage.push()
+                        dockerImage.push('latest')
+                    }
+                }
             }
         }
         
         stage('Deploy to AppServer') {
             steps {
                 sshagent(credentials: ['appserver-ssh']) {
-                    sh "ssh -o StrictHostKeyChecking=no sysadmin@20.120.177.214 'docker pull ${env.JD_IMAGE}'"
-                    sh "ssh sysadmin@20.120.177.214 'docker run -d -p 80:80 --name helloworldapp ${env.JD_IMAGE}'"
+                    sh """
+                        ssh -o StrictHostKeyChecking=no -o ConnectTimeout=30 sysadmin@${env.APP_IP} '
+                            docker pull ${env.JD_IMAGE} && \
+                            docker stop helloworldapp || true && \
+                            docker rm helloworldapp || true && \
+                            docker run -d --restart=always --name helloworldapp -p 80:80 ${env.JD_IMAGE}
+                        '
+                    """
                 }
             }
+        }
+    }
+    post {
+        always {
+            script {
+                // Clean up Docker images to save disk space
+                sh "docker rmi ${env.JD_IMAGE} || true"
+            }
+        }
+        success {
+            slackSend(color: 'good', message: "SUCCESS: Job '${env.JOB_NAME} [${env.BUILD_NUMBER}]'")
+        }
+        failure {
+            slackSend(color: 'danger', message: "FAILED: Job '${env.JOB_NAME} [${env.BUILD_NUMBER}]'")
+            archiveArtifacts artifacts: '**/TestResults/*', allowEmptyArchive: true
         }
     }
 }

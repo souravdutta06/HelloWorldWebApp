@@ -1,30 +1,70 @@
 # syntax=docker/dockerfile:1.4
 
-# Build stage
-FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
+# Base builder stage with cached dependencies
+FROM mcr.microsoft.com/dotnet/sdk:8.0 AS base
 WORKDIR /src
 
-# Copy solution and projects
+# Cache NuGet packages by copying csproj files first
 COPY HelloWorldWebApp.sln .
-COPY HelloWorldWebApp.Web/ HelloWorldWebApp.Web/
-COPY HelloWorldWebApp.Tests/ HelloWorldWebApp.Tests/
+COPY HelloWorldWebApp.Web/*.csproj ./HelloWorldWebApp.Web/
+COPY HelloWorldWebApp.Tests/*.csproj ./HelloWorldWebApp.Tests/
 
-# Restore and build the web project
-WORKDIR /src/HelloWorldWebApp.Web
-RUN dotnet restore
-RUN dotnet build -c Release --no-restore
+# Restore packages (creates layer with dependencies)
+RUN dotnet restore HelloWorldWebApp.sln
 
-# Publish
-RUN dotnet publish -c Release -o /app/publish
+# Build stage
+FROM base AS build
+WORKDIR /src
 
-# Runtime stage
+# Copy all source code
+COPY . .
+
+# Build with optimizations
+RUN dotnet build HelloWorldWebApp.sln \
+    -c Release \
+    --no-restore \
+    -p:ContinuousIntegrationBuild=true \
+    -p:DebugType=none \
+    -p:DebugSymbols=false \
+    -o /app/build
+
+# Publish stage
+FROM build AS publish
+RUN dotnet publish HelloWorldWebApp.Web/HelloWorldWebApp.Web.csproj \
+    -c Release \
+    --no-build \
+    --no-restore \
+    --no-self-contained \
+    -p:EnableCompressionInSingleFile=true \
+    -p:PublishTrimmed=true \
+    -p:TrimMode=partial \
+    -p:InvariantGlobalization=true \
+    -o /app/publish
+
+# Final runtime image
 FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS final
+
+# Security hardening
+RUN groupadd -r appgroup && \
+    useradd -r -g appgroup appuser && \
+    chsh -s /bin/false appuser && \
+    rm -rf /tmp/*
+
 WORKDIR /app
-COPY --from=build /app/publish .
+COPY --from=publish --chown=appuser:appgroup /app/publish .
 
-# Expose ports
+# Non-root user for security
+USER appuser
+
+# Health check and port configuration
+HEALTHCHECK --interval=30s --timeout=3s \
+    CMD curl -f http://localhost/healthz || exit 1
+
+ENV ASPNETCORE_URLS=http://+:80 \
+    DOTNET_RUNNING_IN_CONTAINER=true \
+    DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1
+
 EXPOSE 80
-EXPOSE 443
 
-# Run the application
+# Optimized entrypoint
 ENTRYPOINT ["dotnet", "HelloWorldWebApp.Web.dll"]

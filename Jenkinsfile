@@ -37,7 +37,7 @@ pipeline {
             steps {
                 sshagent(credentials: ['appserver-ssh']) {
                     sh "ssh -o StrictHostKeyChecking=no sysadmin@20.120.177.214 'docker pull souravdutta06/helloworldwebapp:latest'"
-                    sh "ssh sysadmin@420.120.177.214 'docker run -d -p 80:80 souravdutta06/helloworldwebapp:latest'"
+                    sh "ssh sysadmin@20.120.177.214 'docker run -d -p 80:80 souravdutta06/helloworldwebapp:latest'"
                 }
             }
         }

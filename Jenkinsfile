@@ -65,7 +65,7 @@ pipeline {
                     # Start container
                     docker run -d \\
                         --name helloworldapp \\
-                        -p 8080:80 \\
+                        -p 80:80 \\
                         ${env.JD_IMAGE}
                     
                     # Wait for startup

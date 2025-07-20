@@ -29,6 +29,5 @@ EXPOSE 443
 
 
 # Run the application
-ENV ASPNETCORE_URLS=http://+:8080
-EXPOSE 8080
+ENV ASPNETCORE_URLS=http://+:80
 ENTRYPOINT ["dotnet", "HelloWorldWebApp.Web.dll"]

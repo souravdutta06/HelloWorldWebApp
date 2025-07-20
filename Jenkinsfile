@@ -27,6 +27,15 @@ pipeline {
                 ])
             }
         }
+        stage('Fix Permissions') {
+    steps {
+        sh '''
+            # Reset permissions on the workspace
+            docker run --rm -v $PWD:/src alpine \
+                sh -c "chown -R 1000:1000 /src && chmod -R 755 /src"
+        '''
+    }
+}
         
         stage('Restore & Build') {
             steps {

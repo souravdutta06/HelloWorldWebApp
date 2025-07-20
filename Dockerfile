@@ -3,19 +3,23 @@
 # Base builder stage with cached dependencies
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS base
 
-# Create non-root user with home directory
+# Create dedicated .NET home with proper permissions
+RUN mkdir -p /dotnet_home && chmod 777 /dotnet_home
+
+# Set environment variables to control .NET behavior
+ENV DOTNET_CLI_HOME=/dotnet_home \
+    DOTNET_SKIP_FIRST_TIME_EXPERIENCE=1 \
+    DOTNET_NOLOGO=1 \
+    NUGET_PACKAGES=/dotnet_home/nuget_packages
+
+# Create application user with home directory
 RUN groupadd -r appgroup && \
-    useradd -r -g appgroup -m -d /appuser appuser && \
-    chown -R appuser:appgroup /appuser
+    useradd -r -g appgroup -d /appuser -m appuser && \
+    chmod 755 /appuser
 
 # Set working directory with proper ownership
 WORKDIR /src
 RUN chown appuser:appgroup /src
-
-# Set environment variables for dotnet
-ENV DOTNET_CLI_HOME=/appuser/.dotnet \
-    DOTNET_SKIP_FIRST_TIME_EXPERIENCE=1 \
-    DOTNET_NOLOGO=1
 
 # Switch to non-root user
 USER appuser
@@ -25,8 +29,8 @@ COPY --chown=appuser:appgroup HelloWorldWebApp.sln .
 COPY --chown=appuser:appgroup HelloWorldWebApp.Web/*.csproj ./HelloWorldWebApp.Web/
 COPY --chown=appuser:appgroup HelloWorldWebApp.Tests/*.csproj ./HelloWorldWebApp.Tests/
 
-# Restore packages with user-level cache
-RUN dotnet restore HelloWorldWebApp.sln
+# Restore packages with explicit cache directory
+RUN dotnet restore HelloWorldWebApp.sln --packages $NUGET_PACKAGES
 
 # Build stage
 FROM base AS build

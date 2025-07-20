@@ -17,7 +17,7 @@ pipeline {
         }
       stage('Unit Test') {
             steps {
-                sh 'dotnet test HelloWorldWebApp.Tests/helloworldwebapp.Tests.csproj'
+                sh 'dotnet test HelloWorldWebApp.Tests/HelloWorldWebApp.Tests.csproj'
             }
         }
         stage('Docker Build') {

@@ -1,8 +1,10 @@
+# syntax=docker/dockerfile:1.4
+
 # Build stage
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
 WORKDIR /src
 
-# Copy solution and restore
+# Copy solution and projects
 COPY HelloWorldWebApp.sln .
 COPY HelloWorldWebApp.Web/ HelloWorldWebApp.Web/
 COPY HelloWorldWebApp.Tests/ HelloWorldWebApp.Tests/

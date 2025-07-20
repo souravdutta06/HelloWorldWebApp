@@ -12,6 +12,15 @@ pipeline {
         APP_IP = "20.120.177.214"
     }
     stages {
+        stage('Fix Permissions') {
+    steps {
+        sh '''
+            # Fix potential permission issues
+            docker run --rm -v $PWD:/src alpine \
+                chown -R $(id -u):$(id -g) /src
+        '''
+    }
+}
         stage('Checkout') {
             steps {
                 checkout([
